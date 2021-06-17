@@ -1,0 +1,238 @@
+---
+title: "Meta-Analysis"
+author: "Kavya"
+date: "9/20/2020"
+output: html_document
+---
+
+```{r}
+#install.packages("meta")
+#install.packages("metafor")
+#install.packages("esc")
+library(meta)
+library(esc)
+library(metafor)
+#install.packages("QuantPsyc")
+library(QuantPsyc)
+#install.packages("forestplot")
+library(forestplot)
+```
+
+https://bookdown.org/MathiasHarrer/Doing_Meta_Analysis_in_R/random.html
+
+Neurology Paper - We chose a fixed-effects method over a random effects model to avoid exacerbating potential bias due to differences in sample size and available data in the two cohorts. 
+
+I standardized the regressions below - is this the right move? 
+Any suggestions on calculating effect size? I calculated using standardized regression coefficients. https://bookdown.org/MathiasHarrer/Doing_Meta_Analysis_in_R/b.html#b
+
+Also, unsure what to enter for group1 and group2 size as we are not using controls here: just discovery and extension cohorts. I just entered in the ext and disc cohort sizes. 
+
+```{r}
+#First we need to randomly split the data into Discovery and Extension
+All_msrsr_dem1115 <- rbind(CUIMC_msrsr_median_latest_dem_1115,Pitt_msrsr_median_latest_dem_1115)
+
+# Split MSRSR Data into Training and Testing in R 
+sample_size = floor(0.7*nrow(All_msrsr_dem1115))
+set.seed(876)
+picked = sample(seq_len(nrow(All_msrsr_dem1115)),size = sample_size)
+Discovery_msrsr = All_msrsr_dem1115[picked,]
+Extension_msrsr = All_msrsr_dem1115[-picked,]
+
+```
+
+```{r}
+
+#msrsr vs depravity correlation for discovery
+disc_msrsr_lm <- lm(msrsr_median ~ PC1, Discovery_msrsr)
+cor(scale(Discovery_msrsr$msrsr_median), scale(Discovery_msrsr$PC1), method="pearson")
+summary(disc_msrsr_lm)
+lm.beta(disc_msrsr_lm)
+
+disc_msrsr_lm <- lm(msrsr_median ~ PC1, Discovery_msrsr)
+disc_msrsr_lm$vi <- 0
+disc.res.rma <- rma(disc_msrsr_lm, vi, mods =  ~ PC1, method = "FE", data=Discovery_msrsr)
+
+
+#Calculating effect size for Discovery Cohort
+esc_beta(beta=0.2316798, sdy=1.946e-02, grp1n=2501, grp2n= 1073, es.type = "g") #unsure of what to put in group1 size and group2 size
+
+
+ext_msrsr_lm <- lm(scale(msrsr_median) ~ scale(PC1), Extension_msrsr)
+cor(scale(Extension_msrsr$msrsr_median), scale(Extension_msrsr$PC1), method = "pearson")
+summary(ext_msrsr_lm)
+lm.beta(ext_msrsr_lm)
+
+#Calculating effect size for Extension Cohort
+esc_beta(beta=0.2068889, sdy=2.990e-02, grp1n=1073, grp2n=2501, es.type = "g") #unsure of what to put in group1 size and group2 size
+
+meta <- fread("meta2.csv")
+fixed_meta <- metagen(TE,
+             seTE,
+             data=meta,
+             studlab=paste(cohort),
+             comb.fixed = TRUE,
+             comb.random = FALSE,
+             prediction=TRUE,
+             sm="SMD")
+fixed_meta
+
+png("forest_fixedmeta_msrsr.png")
+forest(fixed_meta, 
+       xlim = c(.35, .65),
+       leftlabs = c("Cohort", "Beta", "SE"))
+dev.off()
+
+
+metacor <- fread("meta.csv")
+
+m.cor <- metacor(cor, 
+                 n, 
+                 data = metacor,
+                 studlab = metacor$Cohort,
+                 sm = "ZCOR",
+                 method.tau = "SJ")
+forest(m.cor)
+
+png(file = 'forestplot.png') 
+forest(m.cor, 
+       xlim = c(.1,.3))
+dev.off()
+
+```
+
+```{r}
+#install.packages("lm.beta")
+library(lm.beta)
+
+Pitt_msrsr_covar_1115 <- lm(formula = msrsr_median ~ age_latestPRO + sex + race_ethnicity_combo + age_firstsx + dx_dur_adjust + DMT_Group + PC1, data = Pitt_msrsr_median_latest_dem_1115)
+
+summary(Pitt_msrsr_covar_1115)$coefficients
+lm.beta(Pitt_msrsr_covar_1115)
+tab_model(Pitt_msrsr_covar_1115)
+
+CUIMC_msrsr_covar_1115 <- lm(formula = msrsr_median ~ age_latestPRO + sex + race_ethnicity_combo + age_firstsx + dx_dur_adjust + DMT_Group + PC1, data = CUIMC_msrsr_median_latest_dem_1115)
+
+summary(CUIMC_msrsr_covar_1115)$coefficients
+tab_model(CUIMC_msrsr_covar_1115)
+lm.beta(CUIMC_msrsr_covar_1115)
+
+meta_msrsr <- fread("msrsr_meta.csv")
+
+metaanalysis_msrsr <- metagen(TE,
+                seTE,
+                data=meta_msrsr,
+                studlab=paste(Cohort),
+                comb.fixed = FALSE,
+                comb.random = TRUE,
+                hakn = FALSE,
+                prediction=TRUE,
+                sm="")
+
+metaanalysis_msrsr
+
+
+svg(file = 'msrsr_metaplot.svg') 
+msrsr_metaplot <- forest(metaanalysis_msrsr,
+       xlim = c(-1,1),
+       col.diamond = "black",
+       digits.pval = 4,
+       print.I2.ci = FALSE,
+       print.tau2 = FALSE,
+       pooled.totals = FALSE,
+       xlab.pos = 0,
+       digits = 3,
+       col.predict = "black",
+       text.random = "Meta Analysis",
+       leftcols = c("studlab", "effect", "ci", "n"), 
+       leftlabs = c("Cohort", "Estimate","95%-CI", "N"),
+       just = "center", just.addcols = "center", just.studlab = "center",
+       rightcols = FALSE
+)
+dev.off()
+
+```
+
+```{r}
+
+Pitt_promis_covar_1115 <- lm(formula = promis_median ~ age_latestPRO + sex + race_ethnicity_combo + age_firstsx + dx_dur_adjust + DMT_Group + PC1, data = Pitt_promis_median_latest_dem_1115)
+summary(Pitt_promis_covar_1115)$coefficients
+tab_model(Pitt_promis_covar_1115)
+
+CUIMC_promis_covar_1115 <- lm(formula = promis_median ~ age_latestPRO + sex + race_ethnicity_combo + age_firstsx + dx_dur_adjust + DMT_Group + PC1, data = CUIMC_promis_median_latest_dem_1115)
+summary(CUIMC_promis_covar_1115)$coefficients
+tab_model(CUIMC_promis_covar_1115)
+
+promis_meta <- fread("meta_promis.csv")
+
+
+metaanalysis_promis <- metagen(TE,
+                seTE,
+                data=promis_meta,
+                studlab=paste(Cohort),
+                comb.fixed = FALSE,
+                comb.random = TRUE,
+                hakn = FALSE,
+                prediction=TRUE,
+                sm="")
+metaanalysis_promis
+
+svg(file = 'promis_metaplot.svg') 
+promis_metaplot <- forest(metaanalysis_promis,
+       xlim = c(-1,1),
+       col.diamond = "black",
+       print.I2.ci = FALSE,
+       xlab.pos = 0,
+       overall.hetstat = TRUE, 
+       print.I2	= TRUE,
+       digits = 3,
+       text.random = "Meta Analysis",
+       leftcols = c("studlab", "effect", "ci", "n"), 
+       leftlabs = c("Cohort", "Estimate","95%-CI", "N"),
+       just = "center", just.addcols = "center", just.studlab = "center",
+       rightcols = FALSE
+)
+dev.off()
+
+```
+
+```{r}
+
+Pitt_pdds_covar_1115 <- lm(formula = pdds_median ~ age_latestPRO + sex + race_ethnicity_combo + age_firstsx + dx_dur_adjust + DMT_Group + PC1, data = Pitt_pdds_median_latest_dem_1115)
+summary(Pitt_pdds_covar_1115)$coefficients
+tab_model(Pitt_pdds_covar_1115)
+
+CUIMC_pdds_covar_1115 <- lm(formula = pdds_median ~ age_latestPRO + sex + race_ethnicity_combo + age_firstsx + dx_dur_adjust + DMT_Group + PC1, data = CUIMC_pdds_median_latest_dem_1115)
+summary(CUIMC_pdds_covar_1115)$coefficients
+tab_model(CUIMC_pdds_covar_1115)
+
+pdds_meta <- fread("meta_pdds.csv")
+
+metaanalysis_pdds <- metagen(TE,
+                seTE,
+                data=pdds_meta,
+                studlab=paste(cohort),
+                comb.fixed = FALSE,
+                comb.random = TRUE,
+                hakn = FALSE,
+                prediction=TRUE,
+                sm="")
+metaanalysis_pdds
+
+svg(file = 'pdds_metaplot.svg') 
+pdds_metaplot <- forest(metaanalysis_pdds,
+       xlim = c(-1,1),
+       col.diamond = "black",
+       print.I2.ci = FALSE,
+       xlab.pos = 0,
+       overall.hetstat = TRUE, 
+       print.I2	= FALSE,
+       digits = 3,
+       text.random = "Meta Analysis",
+       leftcols = c("studlab", "effect", "ci", "n"), 
+       leftlabs = c("Cohort", "Estimate","95%-CI", "N"),
+       just = "center", just.addcols = "center", just.studlab = "center",
+       rightcols = FALSE
+)
+dev.off()
+
+```

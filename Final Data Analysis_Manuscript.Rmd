@@ -1,0 +1,687 @@
+---
+title: "Final Data Analysis"
+author: "Kavya"
+date: "06/07/2021"
+output: html_document
+---
+
+
+```{r}
+#Demographics Tables
+library(table1)
+library(eeptools)
+library(scales)
+library(arsenal)
+
+
+varsToFactor <- c("sex","race","ethnicity")
+
+recon_dem_1115_age_MS[varsToFactor] <- lapply(recon_dem_1115_age_MS[varsToFactor], factor)
+
+myvars <- c("age_latestPRO", "sex", "race", "ethnicity", "age_firstsx", "msdx_age", "dx_dur_adjust", "dmt_now_duration", "DMT_Group")
+
+
+#install.packages("tableone")
+library(tableone)
+all_demo <- CreateTableOne(vars = myvars, strata = 'cohort', test = TRUE, includeNA = FALSE, data = recon_dem_1115_age_MS)
+
+demot <- print(all_demo)
+write.csv(demot, file = "demotable.csv")
+
+
+
+ID_demographic <- table1(~ age_latestPRO + factor(sex) + factor(race) + factor(ethnicity) + age_firstsx + msdx_age + dx_dur_adjust + factor(DMT_Group) + dmt_now_duration | cohort, data=recon_dem_1115_age_MS, topclass = "Rtable1-times")
+
+ID_demographic
+```
+
+
+```{r}
+#General analyses, looking at overall relationships - not included in results
+
+#Depravity Index vs Median Household Income, for all participants in our demographics database
+depVmedincome <- recon_dem_1115 %>%
+  ggplot(aes(x = PC1, y = median_household_income)) + geom_point() + geom_smooth(method=lm, se = FALSE) +      
+  stat_cor(method = "pearson", size = 5, label.x = -2) +
+  labs(x = "Area Deprivation Index", y = "Neighborhood-Level Median\nHousehold Income in 2015 (US Dollars)") +
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 13))
+depVmedincome
+ggsave("Depravity Index vs Median Income 2015.png", depVmedincome, dpi = 300, height = 5, width = 7, units = "in")
+
+#merging the unedited PROMIS and MSRSR scores
+mvp1 <- merge(recon_promis, recon_msrsr, by = "id_participant_l")
+
+#plot comparing PROMIS vs MSRS-R
+mvp <- mvp1 %>%
+  ggplot(aes(x = promis_physical_tscore, y = msrsr_total)) + geom_point() + geom_smooth(method=lm, se = FALSE) +      
+  stat_cor(method = "pearson", size = 4.5, label.x = -2) +
+  labs(x = "PROMIS T-Score", y = "MSRS-R Total") +
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5))
+ggsave("PROMIS v MSRSR.png", mvp, dpi = 300, height = 5, width = 7, units = "in")
+
+mvpdds <- merge(recon_msrsr, Pitt_pdds_latest, by = "id_participant_l")
+pvpdds <- merge(recon_promis, Pitt_pdds_latest, by = "id_participant_l")
+
+#merging the median PROMIS and MSRSR Scores
+msrsr_v_promis <- merge(Pitt_msrsr_median_latest_dem_1115, Pitt_promis_median_latest_dem_1115, by = "id_participant_l")
+
+#Comparing MSRSR vs PROMIS, but looking at the median scores we used for our analyses, only looking at Discovery Cohort here
+MvP <- msrsr_v_promis %>%
+  filter(subject_group.x== 'MS') %>% 
+  ggplot(aes(x = msrsr_median, y = promis_median)) + geom_point() + geom_smooth(method=lm, se = TRUE, fill = "#D9DFE7") +      
+  stat_cor(method = "pearson", label.x = 18, size = 4.5) +
+  labs(title = "MSRS-R Median Score vs PROMIS Median T Score", size = 7, x = "MSRS-R Latest Year Median Score", y = "PROMIS Latest Year Median T Score") +
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5))
+ggsave("msrsr vs promis_7-26-2020.png", MvP, dpi = 300, height = 5, width = 7, units = "in")
+
+
+#Plot comparing MSRSR and PDDS
+mvppds_plot <- mvpdds %>%
+  ggplot(aes(x = msrsr_total, y = pdds)) + geom_point() + geom_smooth(method=lm, se = FALSE) +      
+  stat_cor(method = "pearson", size = 4.5, label.x = -2) +
+  labs(y = "PDDS Total Score", x = "MSRS-R Total Score") +
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5))
+ggsave("mvppds_plot.png", mvppds_plot, dpi = 300, height = 7, width = 7, units = "in")
+pvppds_plot <- pvpdds %>%
+  ggplot(aes(x = promis_physical_tscore, y = pdds)) + geom_point() + geom_smooth(method=lm, se = FALSE) +  
+
+```
+
+
+```{r}
+#FINAL COVARIATE ADJUSTED REGRESSION for Depravity Index- AIM 2
+
+#Running the regression
+
+Pitt_msrsr_covar_1115 <- lm(formula = msrsr_median ~ age_latestPRO + sex + race_ethnicity_combo + age_firstsx + dx_dur_adjust + DMT_Group + PC1, data = Pitt_msrsr_median_latest_dem_1115)
+
+Pitt_promis_covar_1115 <- lm(formula = promis_median ~ age_latestPRO + sex + race_ethnicity_combo + age_firstsx + dx_dur_adjust + DMT_Group + PC1, data = Pitt_promis_median_latest_dem_1115)
+
+Pitt_pdds_covar_1115 <- lm(formula = pdds_median ~ age_latestPRO + sex + race_ethnicity_combo + age_firstsx + dx_dur_adjust + DMT_Group + PC1, data = Pitt_pdds_median_latest_dem_1115)
+
+#Displaying the regression
+Discovery <- tab_model(Pitt_msrsr_covar_1115, Pitt_promis_covar_1115, Pitt_pdds_covar_1115)
+
+#Creating MS only data frames for each of the PROs; Replication Cohort
+CUIMC_msrsr_covar_1115 <- lm(formula = msrsr_median ~ age_latestPRO + sex + race_ethnicity_combo + age_firstsx + dx_dur_adjust + DMT_Group + PC1, data = CUIMC_msrsr_median_latest_dem_1115)
+
+CUIMC_promis_covar_1115 <- lm(formula = promis_median ~ age_latestPRO + sex + race_ethnicity_combo + age_firstsx + dx_dur_adjust + DMT_Group + PC1, data = CUIMC_promis_median_latest_dem_1115)
+
+CUIMC_pdds_covar_1115 <- lm(formula = pdds_median ~ age_latestPRO + sex + race_ethnicity_combo + age_firstsx + dx_dur_adjust + DMT_Group + PC1, data = CUIMC_pdds_median_latest_dem_1115)
+
+Extension <- tab_model(CUIMC_msrsr_covar_1115, CUIMC_promis_covar_1115, CUIMC_pdds_covar_1115)
+
+```
+
+
+
+```{r}
+#DEPRAVITY INDEX ANALYSES - THIS IS THE PRIMARY AIM
+
+#
+#MSRSR TOTAL MEDIAN SCORE ANALYSES
+#
+
+#Discovery -Cohort - Depravity Index vs MSRSR
+Pitt_MS_msrsr_depravity11_med <- Pitt_msrsr_median_latest_dem_1115 %>%
+  filter(subject_group == 'MS') %>% 
+  ggplot(aes(x = PC1, y = msrsr_median)) + geom_point() + geom_smooth(method=lm, se = TRUE, fill = "#D9DFE7") +      
+  stat_cor(method = "pearson", size = 5) +
+  labs(x = "Area Deprivation Index 2015", y = "MSRS-R Median Score of Latest Year") + xlim(-8, 4) + ylim(0, 32) +
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 13))
+ggsave("Discovery - MSRSR vs Depravity 2015.png", Pitt_MS_msrsr_depravity11_med, dpi = 300, height = 5, width = 7, units = "in")
+
+#Replication Cohort - Depravity Index vs MSRSR
+CUIMC_MS_msrsr_depravity11_med <- CUIMC_msrsr_median_latest_dem_1115 %>%
+  filter(subject_group == 'MS') %>%
+  ggplot(aes(x = PC1, y = msrsr_median)) + geom_point() + geom_smooth(method=lm, se = TRUE, fill = "#D9DFE7") +      
+  stat_cor(method = "pearson", size = 5) +
+  labs(x = "Area Deprivation Index 2015", y = "MSRS-R Median Score of Latest Year") + xlim(-8, 4) + ylim(0, 32) +
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 13))
+ggsave("Extension - MSRSR vs Depravity 2015.png", CUIMC_MS_msrsr_depravity11_med, dpi = 300, height = 5, width = 7, units = "in")
+
+#Regression for Dep Index vs MSRSR
+msrsrPC1 <- lm(formula = msrsr_median ~ PC1, data = MS_msrsr_Pitt_covariate)
+cmsrsrPC1 <- lm(formula = msrsr_median ~ PC1, data = MS_msrsr_CUIMC_covariate)
+tab_model(msrsrPC1, cmsrsrPC1)
+
+#
+#PROMIS T SCORE ANALYSES
+#
+
+#Discovery Cohort - depravity index vs PROMIS
+Pitt_MS_promis_depravity11_med <- Pitt_promis_median_latest_dem_1115 %>%
+  filter(subject_group == 'MS') %>% 
+  ggplot(aes(x = PC1, y = promis_median)) + geom_point() + geom_smooth(method=lm, se = TRUE, fill = "#D9DFE7") +      
+  stat_cor(method = "pearson", size = 5) + xlim(-8, 4) + ylim(0, 80) +
+  labs(x = "Area Deprivation Index 2015", y = "PROMIS Median T Score of Latest Year") +
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 13))
+
+ggsave("Discovery -PROMIS vs Depravity 2015-102020.png", Pitt_MS_promis_depravity11_med, dpi = 300, height = 5, width = 7, units = "in")
+
+
+#Replication Cohort - depravity index vs PROMIS
+CUIMC_MS_promis_depravity11_med <- CUIMC_promis_median_latest_dem_1115 %>%
+  filter(subject_group == 'MS')%>%
+  ggplot(aes(x = PC1, y = promis_median)) + geom_point() + geom_smooth(method=lm, se = TRUE, fill = "#D9DFE7") +      
+  stat_cor(method = "pearson", size = 5) + xlim(-8, 4) +ylim(0, 80) +
+  labs(x = "Area Deprivation Index 2015", y = "PROMIS Median T Score of Latest Year") +
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 13))
+ggsave("Extension - PROMIS vs Depravity 2015.png", CUIMC_MS_promis_depravity11_med,dpi = 300, height = 5, width = 7, units = "in")
+
+#Regresion for both cohorts
+pitt_promis_lm <- lm(formula = promis_median ~ PC1, data = MS_promis_Pitt_covariate)
+cuimc_promis_lm <- lm(formula = promis_median ~ PC1, data = MS_promis_CUIMC_covariate)
+tab_model(pitt_promis_lm, cuimc_promis_lm) #display regression results for both cohorts
+
+#
+#PDDS MEDIAN AND DICHOTOMIZED SCORE ANALYSES
+#
+
+#Discovery Cohort - Depravity Index vs PDDS Dichotomized Score - Boxplot
+Pitt_MS_pdds_depravity11_med <- Pitt_pdds_median_latest_dem_1115 %>%
+  filter(!is.na(dich))%>%
+  filter(subject_group == 'MS') %>% 
+  ggplot(aes(y = PC1, x = dich)) + geom_boxplot() + 
+  labs(y = "Area Deprivation Index 2015", x = "PDDS Median Dichotomized Score of Latest Year") +
+  stat_compare_means(method = "t.test", label.y = -6.5, label.x = 1.2, size = 5) + ylim(-8, 4) +
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 13))
+Pitt_MS_pdds_depravity11_med <- Pitt_MS_pdds_depravity11_med + coord_flip()
+
+ggsave("Discovery - PDDS vs Dep 2015 - Boxplot 12-2020.png", Pitt_MS_pdds_depravity11_med, dpi = 300, height = 5, width = 7, units = "in")
+
+#Discovery Cohort - Depravity vs PDDS Median Score - Regression
+Pitt_MS_pdds_depravity11_LINE <- Pitt_pdds_median_latest_dem_1115 %>%
+  filter(subject_group == 'MS') %>% 
+  ggplot(aes(x = PC1, y = pdds_median)) + geom_point() + 
+  geom_smooth(method = lm) + stat_cor(method = "pearson", label.y = 9)
+ggsave("Pitt_MS_pdds_depravity11_LINE.png", Pitt_MS_pdds_depravity11_LINE, dpi = 300)
+
+
+#Replication Cohort - Depravity Index vs PDDS Dichotomized Score - Boxplot
+CUIMC_MS_pdds_depravity11_med <- CUIMC_pdds_median_latest_dem_1115 %>%
+  filter(!is.na(dich))%>%
+  filter(subject_group == 'MS') %>% 
+  ggplot(aes(y = PC1, x = dich)) + geom_boxplot() + 
+  labs(y = "Area Deprivation Index 2015", x = "PDDS Median Dichotomized Score of Latest Year") +
+  stat_compare_means(method = "t.test", label.y = -6, label.x = 1.2, size = 5) + ylim(-8, 4) +
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 13))
+CUIMC_MS_pdds_depravity11_med <- CUIMC_MS_pdds_depravity11_med + coord_flip()
+
+ggsave("Extension - PDDS vs Dep 2015 - Boxplot 12-2020.png", CUIMC_MS_pdds_depravity11_med, dpi = 300, height = 5, width = 7, units = "in")
+
+#Replication Cohort - Depravity vs PDDS Median Score - Regression
+CUIMC_MS_pdds_depravity11_LINE <- CUIMC_pdds_median_latest_dem_1115 %>%
+  filter(subject_group == 'MS') %>% 
+  ggplot(aes(x = PC1, y = pdds_median)) + geom_point() + 
+  geom_smooth(method = lm) + stat_cor(method = "pearson", label.y = 9)
+ggsave("CUIMC_MS_pdds_depravity11_LINE.png", CUIMC_MS_pdds_depravity11_LINE, dpi = 300)
+
+#Regression of PDDS median scores vs depravity index
+pitt_pdds_lm <- lm(formula = pdds_median ~ PC1, data = MS_pdds_Pitt_covariate)
+cuimc_pdds_lm <- lm(formula = pdds_median ~ PC1, data = MS_pdds_CUIMC_covariate)
+tab_model(pitt_pdds_lm, cuimc_pdds_lm) #display regression
+```
+
+
+```{r}
+#AIM 2 - Change in SES from 2015 to 2018 measured by Median Household Income vs PROs  
+
+#Creating a change in SES Datset
+
+#filtering out relevant variables
+change_ses_11 <- recon_dem_15 %>% select(id_participant_l, median_household_income) 
+change_ses_14 <- recon_dem_1418 %>% select(id_participant_l, median_household_income)
+change_ses <- merge(change_ses_11, change_ses_14, by = "id_participant_l") 
+
+#measuring percent change in median household income from 2015 to 2018
+change_ses$MHI_change <- ((change_ses$median_household_income.y/change_ses$median_household_income.x - 1)*100)
+
+#Simple subtracted change in household income from 2015 to 2018
+change_ses$MHI_subtract <- (change_ses$median_household_income.y - change_ses$median_household_income.x)
+
+pitt_pdds_change <- merge(Pitt_pdds_median_latest_dem_1115, change_ses, by = "id_participant_l")
+
+pitt_msrsr_change <- merge(Pitt_msrsr_median_latest_dem_1115, change_ses, by = "id_participant_l")
+
+pitt_promis_change <- merge(Pitt_promis_median_latest_dem_1115, change_ses, by = "id_participant_l")
+
+CUIMC_pdds_change <- merge(CUIMC_pdds_median_latest_dem_1115, change_ses, by = "id_participant_l")
+
+CUIMC_msrsr_change <- merge(CUIMC_msrsr_median_latest_dem_1115, change_ses, by = "id_participant_l")
+
+CUIMC_promis_change <- merge(CUIMC_promis_median_latest_dem_1115, change_ses, by = "id_participant_l")
+
+PC_msrsr_change <- rbind(pitt_msrsr_change, CUIMC_msrsr_change)
+PC_promis_change <- rbind(pitt_promis_change, CUIMC_promis_change)
+PC_pdds_change <- rbind(pitt_pdds_change, CUIMC_pdds_change)
+
+PC_msrsr_change1 <- PC_msrsr_change %>%
+  ggplot(aes(x = MHI_change, y = msrsr_median)) + geom_point() + geom_smooth(method=lm, se = TRUE) +      
+  stat_cor(method = "pearson", label.y = 30, size = 5) +
+  labs(x = "Percent Change in Neighborhood-Level Median Household Income\nBetween 2015 and 2018", 
+       y = "MSRS-R Median Score of Latest Year") + 
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 13))
+ggsave("joint-analysis msrsr vs change in med income.png", PC_msrsr_change1, 
+       height = 5, width = 7, units = "in", dpi = 300)
+
+PC_promis_change1 <- PC_promis_change %>%
+  ggplot(aes(x = MHI_change, y = promis_median)) + geom_point() + geom_smooth(method=lm, se = TRUE) +       
+  stat_cor(method = "pearson", size = 5) +
+  labs(x = "Percent Change in Neighborhood-Level Median Household Income\nBetween 2015 and 2018", 
+       y = "PROMIS Median T Score of Latest Year") + 
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 13))
+ggsave("joint-analysis PROMIS vs change in med income.png", PC_promis_change1, 
+       height = 5, width = 7, units = "in", dpi = 300)
+
+PC_pdds_change1 <- PC_pdds_change %>%
+  filter(!is.na(dich))%>%
+  ggboxplot(y = "MHI_change", x = "dich") + 
+  stat_compare_means(method = "t.test", label.y = 75, label.x = 1.1, size = 5) +
+  labs(y = "Percent Change in Neighborhood-Level Median Household Income\nBetween 2015 and 2018", 
+       x = "PDDS Median Dichotomized Score of Latest Year") + ylim(-25,100)+
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5), text = element_text(size = 13))
+PC_pdds_change1 <- PC_pdds_change1 + coord_flip()
+ggsave("joint-analysis PDDS vs change in med income.png", PC_pdds_change1, 
+       height = 5, width = 7, units = "in", dpi = 300)
+
+#Percent Change in MHI vs PDDS Median Score
+PC_pdds_change_line <- MS_pdds_change %>%
+  ggplot(aes(x = MHI_change, y = pdds_median)) + geom_point() + geom_smooth(method = lm) + stat_cor(method = "pearson") + theme_minimal() + 
+  labs(y = "PDDS Latest Year Median Score", 
+       x = "Percent Change in Neighborhood-Level Median Household Income\nBetween 2015 and 2018")
+#ggsave("PC_pdds_change_line.png", PC_pdds_change_line, height = 5, width = 7, units = "in", dpi = 300)
+
+
+#Covariate Adjusted Regressions of PROs vs Percent Change in MHI
+MHI_msrsr <- lm(formula = msrsr_median ~ MHI_change + age_latestPRO + sex + race_ethnicity_combo + age_firstsx + dx_dur_adjust + DMT_Group, data = PC_msrsr_change)
+
+MHI_promis <- lm(formula = promis_median ~ MHI_change + age_latestPRO + sex + race_ethnicity_combo + age_firstsx + dx_dur_adjust +DMT_Group, data = PC_promis_change)
+
+MHI_pdds <- lm(formula = pdds_median ~ MHI_change + age_latestPRO + sex + race_ethnicity_combo + age_firstsx + dx_dur_adjust + DMT_Group, data = PC_pdds_change)
+
+MHI_change_covar <- tab_model(MHI_msrsr, MHI_promis, MHI_pdds)
+
+
+
+
+
+
+
+
+mc <- lm(formula = msrsr_median ~ MHI_change + age_latestPRO + sex + race_ethnicity_combo + age_firstsx + dx_dur_adjust + DMT_Group, data = MS_msrsr_change)
+pc <- lm(formula = promis_median ~ MHI_change + age_latestPRO + sex + race_ethnicity_combo + age_firstsx + dx_dur_adjust + DMT_Group, data = MS_promis_change)
+ppc <-lm(formula = pdds_median ~ MHI_change + age_latestPRO + sex + race_ethnicity_combo + age_firstsx + dx_dur_adjust + DMT_Group, data = MS_pdds_change)
+
+tab_model(mc, pc, ppc) #Display regressions
+
+
+#change in other factors from 2015 to 2018
+
+```
+
+
+
+
+
+```{r}
+#PNQ Analyses
+
+ms_pnq <- fread("MS Only Compiled Clean PNQ Dataset.csv") #this is only the pandemic PNQ data
+setnames(ms_pnq, "record_id", "id_participant_l")
+
+ms_pnq_dem11 <- merge(ms_pnq, recon_dem_1115_age_MS, by = "id_participant_l") #merging the PNQ dataset with our demographics dataset
+
+#setting the median household incomes to the same groups as individual income
+ms_pnq_dem11$med_income_group [ms_pnq_dem11$median_household_income < 20000] <- "0 to $19,999"
+ms_pnq_dem11$med_income_group [ms_pnq_dem11$median_household_income > 20000 & ms_pnq_dem11$median_household_income < 35000] <- "$20,000 to $34,999"
+ms_pnq_dem11$med_income_group [ms_pnq_dem11$median_household_income > 35000 & ms_pnq_dem11$median_household_income < 50000] <- "$35,000 to $49,999"
+ms_pnq_dem11$med_income_group [ms_pnq_dem11$median_household_income > 50000 & ms_pnq_dem11$median_household_income < 65000] <- "$50,000 to $64,999"
+ms_pnq_dem11$med_income_group [ms_pnq_dem11$median_household_income > 65000 & ms_pnq_dem11$median_household_income < 80000] <- "$65,000 to $79,999"
+ms_pnq_dem11$med_income_group [ms_pnq_dem11$median_household_income > 80000 & ms_pnq_dem11$median_household_income < 95000] <- "$80,000 to $94,999"
+ms_pnq_dem11$med_income_group [ms_pnq_dem11$median_household_income > 95000 & ms_pnq_dem11$median_household_income < 110000] <- "$95,000 to $109,999"
+ms_pnq_dem11$med_income_group [ms_pnq_dem11$median_household_income > 110000 & ms_pnq_dem11$median_household_income < 125000] <- "$110,000 to $124,999"
+ms_pnq_dem11$med_income_group [ms_pnq_dem11$median_household_income > 125000] <- "$125,000 or higher"
+
+#dichotomizing the PDDS score
+ms_pnq_dem11$pdds_dich [ms_pnq_dem11$ambulation_assistance == "no ambulation assistance"] <- "1"
+ms_pnq_dem11$pdds_dich [ms_pnq_dem11$ambulation_assistance == "ambulation assistance"] <- "2"
+
+ms_pnq_dem11$income <- factor(ms_pnq_dem11$income, levels = c("0 to $19,999", "$20,000 to $34,999","$35,000 to $49,999", "$50,000 to $64,999",  "$65,000 to $79,999", "$80,000 to $94,999", "$95,000 to $109,999", "$110,000 to $124,999", "$125,000 or higher"), ordered = TRUE)
+
+ms_pnq_dem11$med_income_group <- factor(ms_pnq_dem11$med_income_group, levels = c("0 to $19,999", "$20,000 to $34,999","$35,000 to $49,999", "$50,000 to $64,999",  "$65,000 to $79,999", "$80,000 to $94,999", "$95,000 to $109,999", "$110,000 to $124,999", "$125,000 or higher"), ordered = TRUE)
+
+msrsrincome <- boxplot(ms_pnq_dem11$msrs_total ~ ms_pnq_dem11$income)
+msrsrmedincome <- boxplot(ms_pnq_dem11$msrs_total ~ ms_pnq_dem11$med_income_group)
+
+#median income group vs depravity index, not really relevant to PNQ
+depindex_v_income <- ms_pnq_dem11 %>%
+  filter(!is.na(income))%>% 
+  ggplot(aes(x = med_income_group, y = PC1)) + geom_boxplot() + geom_jitter(width = .2) +
+  stat_compare_means(label = "p.signif", method = "t.test", ref.group = ".all.", hide.ns = TRUE) +
+  theme_minimal() + theme(plot.title = element_text(hjust = 0.5))
+depindex_v_income
+
+all_pdds_median <- rbind(CU_pdds_median_latest, Pitt_pdds_median_latest)
+all_pnq_pdds <- merge(ms_pnq_dem11, all_pdds_median, by = "id_participant_l")
+
+
+#PNQ EXPLORATORY ANALYSES
+
+
+#covariate adjusted regressions of individual income vs PROs
+ms_pnq_dem11_covar <- ms_pnq_dem11
+
+ms_pnq_dem11_covar$income <- factor(ms_pnq_dem11_covar$income, levels = c("0 to $19,999", "$20,000 to $34,999","$35,000 to $49,999", "$50,000 to $64,999",  "$65,000 to $79,999", "$80,000 to $94,999", "$95,000 to $109,999", "$110,000 to $124,999", "$125,000 or higher"),labels = c(0,1,2,3,4,5,6,7,8), ordered = TRUE)
+
+ms_pnq_dem11_covar$income <- as.numeric(ms_pnq_dem11_covar$income)
+
+all_pnq_pdds_covar <- merge(ms_pnq_dem11_covar, all_pdds_median, by = "id_participant_l")
+
+pnq_msrsr_covariate <- lm(formula = msrs_total ~ age_latestPRO + sex.x + race_ethnicity_combo + age_firstsx + dx_dur_adjust + DMT_Group + income, data = ms_pnq_dem11_covar)
+
+pnq_promis_covariate <- lm(formula = promis_tscore ~ age_latestPRO + sex.x + race_ethnicity_combo + age_firstsx + dx_dur_adjust + DMT_Group + income, data = ms_pnq_dem11_covar)
+
+pnq_pdds_covariate <- lm(formula = pdds_median ~ age_latestPRO + sex.x + race_ethnicity_combo + age_firstsx + dx_dur_adjust + DMT_Group + income, data = all_pnq_pdds_covar)
+
+tab_model(pnq_msrsr_covariate, pnq_promis_covariate, pnq_pdds_covariate)
+
+#individual income bracket vs PROs
+msrs_income_lm <- ms_pnq_dem11_covar %>%
+  ggplot(aes(x = income, y = msrs_total)) + geom_point() + theme_minimal()+
+  geom_smooth(method = lm) + stat_cor(method = "pearson", label.y = 7.5)
+
+
+msrs_income_box <- ms_pnq_dem11_covar %>%
+ filter(!is.na(income))%>% 
+  ggboxplot(x = 'income', y = 'msrs_total', width = 0.35) + rotate_x_text(angle = 45) +
+     geom_smooth(method = "lm", 
+                 se=FALSE, 
+                 aes(group=1)) +
+  labs(x = "Individual Income Bracket",
+       y = "MSRS-R Total Score") + theme_minimal()+ theme(text = element_text(size = 14), axis.title.x = element_text(margin = margin(t = 20)))
+
+ggsave("msrs_income_box.tiff", msrs_income_box, dpi = 300, height = 5, width = 15, units = "in")
+
+
+promis_income_lm <- ms_pnq_dem11_covar %>%
+  ggplot(aes(x = income, y = promis_tscore)) + geom_point() + theme_minimal()+
+  geom_smooth(method = lm) + stat_cor(method = "pearson", label.y = 7.5)
+
+
+promis_income_box <- ms_pnq_dem11_covar %>%
+ filter(!is.na(income))%>% 
+  ggboxplot(x = 'income', y = 'promis_tscore', width = 0.35) + rotate_x_text(angle = 45) +
+     geom_smooth(method = "lm", 
+                 se=FALSE, 
+                 aes(group=1)) +
+  labs(x = "Individual Income Bracket",
+       y = "PROMIS T Score") + theme_minimal()+ theme(text = element_text(size = 14), axis.title.x = element_text(margin = margin(t = 20)))
+
+ggsave("promis_income_box.tiff", promis_income_box, dpi = 300, height = 5, width = 15, units = "in")
+
+
+pdds_income_lm <- all_pnq_pdds_covar %>%
+  ggplot(aes(x = income, y = pdds_median)) + geom_point() + theme_minimal()+
+  geom_smooth(method = lm) + stat_cor(method = "pearson", label.y = 7.5)
+
+
+pdds_income_box <- all_pnq_pdds_covar %>%
+ filter(!is.na(income))%>% 
+  ggboxplot(x = 'income', y = 'pdds_median', width = 0.35) + rotate_x_text(angle = 45) +
+     geom_smooth(method = "lm", 
+                 se=FALSE, 
+                 aes(group=1)) +
+  labs(x = "Individual Income Bracket",
+       y = "PDDS Median Score") + theme_minimal()+ theme(text = element_text(size = 14), axis.title.x = element_text(margin = margin(t = 20)))
+
+ggsave("pdds_income_box.tiff", pdds_income_box, dpi = 300, height = 5, width = 15, units = "in")
+
+#Constraint
+msrsr_constraint <- ms_pnq_dem11 %>%
+  ggplot(aes(x = constraint, y= msrs_total)) + geom_point() + geom_smooth(method = "lm") + stat_cor(method = "pearson") + theme_minimal()
+
+promis_constraint <- ms_pnq_dem11 %>%
+  ggplot(aes(x = constraint, y= promis_tscore)) + geom_point() + geom_smooth(method = "lm") + stat_cor(method = "pearson") + theme_minimal()
+
+pdds_constraint <- all_pnq_pdds %>%
+  ggplot(aes(x = constraint, y= pdds_median)) + geom_point() + geom_smooth(method = "lm") + stat_cor(method = "pearson") + theme_minimal()
+
+#Health Prob Prop
+msrsr_health_prob_prop <- ms_pnq_dem11 %>%
+  ggplot(aes(x = health_prob_prop, y= msrs_total)) + geom_point() + geom_smooth(method = "lm") + stat_cor(method = "pearson") + theme_minimal()
+
+promis_health_prob_prop <- ms_pnq_dem11 %>%
+  ggplot(aes(x = health_prob_prop, y= promis_tscore)) + geom_point() + geom_smooth(method = "lm") + stat_cor(method = "pearson") + theme_minimal()
+
+pdds_health_prob_prop <- all_pnq_pdds %>%
+  ggplot(aes(x = health_prob_prop, y= pdds_median)) + geom_point() + geom_smooth(method = "lm") + stat_cor(method = "pearson") + theme_minimal()
+
+#EFF SIZE
+msrsr_effsize <- ms_pnq_dem11 %>%
+  ggplot(aes(x = effsize, y= msrs_total)) + geom_point() + geom_smooth(method = "lm") + stat_cor(method = "pearson") + theme_minimal()
+
+promis_effsize <- ms_pnq_dem11 %>%
+  ggplot(aes(x = effsize, y= promis_tscore)) + geom_point() + geom_smooth(method = "lm") + stat_cor(method = "pearson") + theme_minimal()
+
+pdds_effsize <- all_pnq_pdds %>%
+  ggplot(aes(x = effsize, y= pdds_median)) + geom_point() + geom_smooth(method = "lm") + stat_cor(method = "pearson") + theme_minimal()
+
+
+
+pc1_constraint <- ms_pnq_dem11 %>%
+  filter(!is.na(constraint))%>% 
+  ggplot(aes(x = PC1, y= constraint)) + geom_point() + geom_smooth(method = "lm") + stat_cor(method = "pearson") + theme_minimal()
+
+pc1c <- lm(PC1 ~ constraint, data = ms_pnq_dem11)
+tab_model(pc1c)
+
+pc1_health_prob <- ms_pnq_dem11 %>%
+    filter(!is.na(health_prob_prop))%>% 
+    ggplot(aes(x = PC1, y= health_prob_prop)) + geom_point() + geom_smooth(method = "lm") + stat_cor(method = "pearson") + theme_minimal()
+
+pc1_hpp <- lm(PC1 ~ health_prob_prop, data = ms_pnq_dem11)
+tab_model(pc1hpp)
+
+pc1_effsize <- ms_pnq_dem11 %>%
+  filter(!is.na(effsize))%>% 
+  ggplot(aes(x = PC1, y= effsize)) + geom_point() + geom_smooth(method = "lm") + stat_cor(method = "pearson") + theme_minimal()
+pc1_eff <- lm(PC1 ~ effsize, data = ms_pnq_dem11)
+tab_model(pc1_eff)
+
+
+
+
+
+```
+Secondary Analyses
+Non Depravity Indicators of SES
+
+```{r}
+require(ggplot2)
+require(reshape2)
+#install.packages("psych")
+library(psych)
+#install.packages("GGally")
+library(GGally)
+#install.packages("ggpubr")
+library(ggpubr)
+
+my_pairs_fn <- function(data, mapping, method = "pearson", ...){
+  p <- ggplot(data = data, mapping = mapping) + 
+    geom_point(size = 1, shape = 16, alpha = 0.3, color = "#155CB3") + 
+    geom_smooth(method = lm, color = "black", size = .4, se = FALSE, ...) + stat_cor(method = "pearson")
+  p
+}
+
+splom_msrsr_ses_11 <- ggpairs(Pitt_msrsr_median_latest_dem_1115[,c("msrsr_median", 
+                                               "pct_unemployed",
+                                               "pct_below_poverty",
+                                               "pct_no_highschool", 
+                                               "pct_college",
+                                               "pct_more_than_one_occupant_per_room",
+                                               "median_household_income",
+                                               "median_home_value")],
+                       columnLabels = c("MSRS-R\nMedian",
+                                        "% Unemployed",
+                                        "% Below\nPoverty",
+                                        "% Without\nHigh School\nEducation",
+                                        "% With College\nEducation",
+                                        "% Living in\nCrowded\nHouseholds",
+                                        "Median Household\nIncome",
+                                        "Median Home\nValue"), 
+                       lower = list(continuous = my_pairs_fn), 
+                       upper = list(continuous = wrap("cor", method= "pearson")), 
+                       diag = list(continuous = "densityDiag", color = "#002B5E")) +
+                       theme_minimal() + 
+                       labs(title = "Discovery Cohort\nMSRS-R Median Total Score vs ADI Components from 2011-2015")
+
+ggsave("SPLOM msrsr 2015.png", splom_msrsr_ses_11, dpi = 300,  height = 7, width = 10, units = "in")
+
+
+splom_msrsr_ses_11_rep <- ggpairs(CUIMC_msrsr_median_latest_dem_1115[,c("msrsr_median", 
+                                               "pct_unemployed",
+                                               "pct_below_poverty",
+                                               "pct_no_highschool", 
+                                               "pct_college",
+                                               "pct_more_than_one_occupant_per_room",
+                                               "median_household_income",
+                                               "median_home_value")],
+                       columnLabels = c("MSRS-R\nMedian",
+                                        "% Unemployed",
+                                        "% Below\nPoverty",
+                                        "% Without\nHigh School\nEducation",
+                                        "% With College\nEducation",
+                                        "% Living in\nCrowded\nHouseholds",
+                                        "Median Household\nIncome",
+                                        "Median Home\nValue"), 
+                       lower = list(continuous = my_pairs_fn), 
+                       upper = list(continuous = wrap("cor", method= "pearson")), 
+                       diag = list(continuous = "densityDiag", color = "#002B5E")) +
+                       theme_minimal() + 
+                       labs(title = "Replication Cohort\nMSRS-R Median Total Score vs SES Components from 2011-2015")
+
+ggsave("SPLOM msrsr 2015 Replication Cohort.png", splom_msrsr_ses_11_rep, dpi = 300,  height = 7, width = 10, units = "in")
+
+#Joint Analysis SPLOM MSRSR
+msrsr_joint_ses <- rbind(Pitt_msrsr_median_latest_dem_1115, CUIMC_msrsr_median_latest_dem_1115) #merge cohorts
+
+joint_splom_msrsr <- ggpairs(msrsr_joint_ses[,c("msrsr_median", 
+                                               "pct_unemployed",
+                                               "pct_below_poverty",
+                                               "pct_no_highschool", 
+                                               "pct_college",
+                                               "pct_more_than_one_occupant_per_room",
+                                               "median_household_income",
+                                               "median_home_value")],
+                       columnLabels = c("MSRS-R\nMedian",
+                                        "% Unemployed",
+                                        "% Below\nPoverty",
+                                        "% Without\nHigh School\nEducation",
+                                        "% With College\nEducation",
+                                        "% Living in\nCrowded\nHouseholds",
+                                        "Median Household\nIncome (USD)",
+                                        "Median Home\nValue (USD)"), 
+                       upper = list(continuous = my_pairs_fn), 
+                       lower = list(continuous = wrap("cor", method= "pearson")), 
+                       diag = list(continuous = "densityDiag", color = "#002B5E")) +
+                       theme_minimal() + 
+                       labs(title = "Joint Analysis\nMSRS-R Median Total Score vs ADI Components from 2011-2015")
+
+
+splom_promis_ses_11 <- ggpairs(Pitt_promis_median_latest_dem_1115[,c("promis_median", 
+                                               "pct_unemployed",
+                                               "pct_below_poverty",
+                                               "pct_no_highschool", 
+                                               "pct_college",
+                                               "pct_more_than_one_occupant_per_room",
+                                               "median_household_income",
+                                               "median_home_value")],
+                       columnLabels = c("PROMIS\nMedian T-Score",
+                                        "% Unemployed",
+                                        "% Below\nPoverty",
+                                        "% Without\nHigh School\nEducation",
+                                        "% With College\nEducation",
+                                        "% Living in\nCrowded\nHouseholds",
+                                        "Median Household\nIncome (USD)",
+                                        "Median Home\nValue (USD)"), 
+                       upper = list(continuous = my_pairs_fn), 
+                       lower = list(continuous = wrap("cor", method= "pearson")), 
+                       diag = list(continuous = "densityDiag", color = "#002B5E")) +
+                       theme_minimal() + 
+                       labs(title = "Discovery Cohort\nPROMIS Median T-Score vs ADI Components from 2011-2015")
+ggsave("SPLOM promis 2015.png", splom_promis_ses_11, dpi = 300)
+
+
+splom_promis_ses_11_rep <- ggpairs(CUIMC_promis_median_latest_dem_1115[,c("promis_median", 
+                                               "pct_unemployed",
+                                               "pct_below_poverty",
+                                               "pct_no_highschool", 
+                                               "pct_college",
+                                               "pct_more_than_one_occupant_per_room",
+                                               "median_household_income",
+                                               "median_home_value")],
+                       columnLabels = c("PROMIS\nMedian T-Score",
+                                        "% Unemployed",
+                                        "% Below\nPoverty",
+                                        "% Without\nHigh School\nEducation",
+                                        "% With College\nEducation",
+                                        "% Living in\nCrowded\nHouseholds",
+                                        "Median Household\nIncome",
+                                        "Median Home\nValue"), 
+                       upper = list(continuous = my_pairs_fn), 
+                       lower = list(continuous = wrap("cor", method= "pearson")), 
+                       diag = list(continuous = "densityDiag", color = "#002B5E")) +
+                       theme_minimal() + 
+                       labs(title = "Replication Cohort\nPROMIS Median T-Score vs SES Components from 2011-2015")
+ggsave("SPLOM promis 2015 replication cohort.png", splom_promis_ses_11_rep, dpi = 300)
+
+promis_joint_ses <- rbind(Pitt_promis_median_latest_dem_1115, CUIMC_promis_median_latest_dem_1115) #merge cohorts
+
+joint_splom_promis <- ggpairs(promis_joint_ses[,c("promis_median", 
+                                               "pct_unemployed",
+                                               "pct_below_poverty",
+                                               "pct_no_highschool", 
+                                               "pct_college",
+                                               "pct_more_than_one_occupant_per_room",
+                                               "median_household_income",
+                                               "median_home_value")],
+                       columnLabels = c("PROMIS\nMedian T-Score",
+                                        "% Unemployed",
+                                        "% Below\nPoverty",
+                                        "% Without\nHigh School\nEducation",
+                                        "% With College\nEducation",
+                                        "% Living in\nCrowded\nHouseholds",
+                                        "Median Household\nIncome (USD)",
+                                        "Median Home\nValue (USD)"), 
+                       upper = list(continuous = my_pairs_fn), 
+                       lower = list(continuous = wrap("cor", method= "pearson")), 
+                       diag = list(continuous = "densityDiag", color = "#002B5E")) +
+                       theme_minimal() + 
+                       labs(title = "Joint Analysis\nPROMIS Median T-Score vs ADI Components from 2011-2015")
+
+pdds_joint_ses <- rbind(Pitt_pdds_median_latest_dem_1115, CUIMC_pdds_median_latest_dem_1115) #merge cohorts
+
+joint_splom_pdds <- ggpairs(pdds_joint_ses[,c("pdds_median", 
+                                               "pct_unemployed",
+                                               "pct_below_poverty",
+                                               "pct_no_highschool", 
+                                               "pct_college",
+                                               "pct_more_than_one_occupant_per_room",
+                                               "median_household_income",
+                                               "median_home_value")],
+                       columnLabels = c("PDDS\nMedian Score",
+                                        "% Unemployed",
+                                        "% Below\nPoverty",
+                                        "% Without\nHigh School\nEducation",
+                                        "% With College\nEducation",
+                                        "% Living in\nCrowded\nHouseholds",
+                                        "Median Household\nIncome (USD)",
+                                        "Median Home\nValue (USD)"), 
+                       upper = list(continuous = my_pairs_fn), 
+                       lower = list(continuous = wrap("cor", method= "pearson")), 
+                       diag = list(continuous = "densityDiag", color = "#002B5E")) +
+                       theme_minimal() + 
+                       labs(title = "Joint Analysis\nPDDS Median Score vs ADI Components from 2011-2015")
+
+```

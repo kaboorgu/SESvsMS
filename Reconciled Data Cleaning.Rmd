@@ -1,0 +1,458 @@
+---
+title: "Data Cleaning - SES"
+author: "Kavya"
+date: "9/18/2020"
+output: html_document
+---
+
+```{r}
+library(arsenal)
+require(ggplot2)
+require(gridExtra)
+library(data.table)
+library(reshape2)
+library(tidyverse)
+library(stringr)
+library(lubridate)
+library(plotly)
+library(dplyr)
+library(ggpubr)
+library(viridis)
+library(sjPlot)
+library(sjmisc)
+library(sjlabelled)
+require(reshape2)
+library(psych)
+library(GGally)
+library(Hmisc)
+library(tidyr)
+library(tibble)
+library(corrplot)
+library(table1)
+library(eeptools)
+library(scales)
+library(fst)
+library(psych)
+library(RColorBrewer)
+library(wesanderson)
+library(pastecs)
+```
+
+
+```{r}
+#SES Data
+ses11_15 <- fread("SES_2011-2015.csv")
+names(ses11_15)[33] <- "zipcode"
+
+ses14_18 <- read.fst("ses_2014_2018.fst")
+names(ses14_18)[26] <- "zipcode"
+ses14_18$zipcode <- as.numeric(ses14_18$zipcode)
+
+covariate <- fread("SES Covariate Data.csv")
+
+#Reconciled Data
+recon_msrsr <- fread("MSRSR_10_2020.csv")
+recon_pdds <- fread("PDDS_10_2020.csv")
+recon_promis <- fread("PROMIS_10_2020.csv")
+
+#recon_pdds$dich[recon_pdds$pdds_combined == 'ambulation assistance'] <- '2'
+#recon_pdds$dich[recon_pdds$pdds_combined == 'no ambulation assistance'] <- '1'
+
+recon_dem <- fread("Dem_11_4_20.csv") #removed CU duplicates of MSGEN
+recon_dem$zipcode_now <- as.character(recon_dem$zipcode_now)
+recon_dem$zipcode_now <- substr(recon_dem$zipcode_now, start = 0, stop = 5)
+setnames(recon_dem, "zipcode_now", "zipcode")
+recon_dem$zipcode <- as.numeric(recon_dem$zipcode)
+
+recon_dem$age_now <- as.numeric(recon_dem$age_now)
+
+recon_dem_1115 <- merge(recon_dem, ses11_15, by = 'zipcode')
+recon_dem_15 <- merge(recon_dem, ses11_15, by = 'zipcode')
+recon_dem_1418 <- merge(recon_dem, ses14_18, by = 'zipcode')
+
+```
+
+
+```{r}
+# FILTERING OUT MSRS-R DATA BASED ON COHORTS
+
+# MSGEN - MS genetics cohort from CUIMC; MS, related and control
+# MSH, REF, TNF - GEMS cohort from CUIMC; mostly first degree relatives, few MS patients
+# CU - COVID CUIMC cohort; MS, related and control
+# PIT - COVID Pitt cohort; MS, related and control
+# PRT - PROMOTE cohort; MS, related and control
+
+#Adjusting Covariate Data
+#race + ethnicity: 1=non-Hispanic European, 2=otherwise
+# 1 = Other, 3 = Standard, 2 = High
+
+
+recon_dem_1115$race_ethnicity_combo <- ifelse(recon_dem_1115$race == "Caucasian" & recon_dem_1115$ethnicity == "Not Hispanic or Latino", "Non-Hispanic European", "Other")
+
+recon_dem_1115$sex[recon_dem_1115$sex == 'male'] <- "Male"
+recon_dem_1115$sex[recon_dem_1115$sex == 'Male'] <- "Male"
+recon_dem_1115$sex[recon_dem_1115$sex == 'female'] <- "Female"
+recon_dem_1115$sex[recon_dem_1115$sex == 'Female'] <- "Female"
+
+recon_dem_1115$DMT_Group 
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Anti CD20'] <- "2"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Natalizumab'] <- "2"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Tysabri (Natalizumab)'] <- "2"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Tysabri'] <- "2"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Rituxan (Rituximab)'] <- "2"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Rituxan'] <- "2"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Lemtrada (Alemtuzumab/Campath)'] <- "2"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Ocrevus (Ocrelizumab)'] <- "2"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Ocrevus'] <- "2"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Mavenclad (Cladribine)'] <- "2"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Mavenclad'] <- "2"
+
+
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Daclizumab'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now== 'Dimethyl Fumarate'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now== 'Tecfidera (Dimethyl fumarate/BG13)'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now== 'Tecfidera'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Mayzent (Siponimod)'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Mayzent'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Plegridy (Pegylated interferon Beta-1a)'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Plegridy'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Rebif (Interferon beta-1a)'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Rebif (Interferon Beta-1a)'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Rebif'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Teriflunomide'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Aubagio (Teriflunomide)'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Aubagio'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Glatiramer Acetate'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Copaxone/Glatopa (Glatiramer acetate)'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Copaxone/Glatopa'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Interferons'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Avonex (Interferon beta-1a)'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Avonex (Interferon Beta-1a)'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Avonex'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Betaseron (Interferon beta-1b)'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Betaseron (Interferon Beta-1b)'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Betaseron'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Fingolimod'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Gilenya (Fingolimod)'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Gilenya'] <- "3"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Vumerity (Diroximel Fumarate)	'] <- "3"
+
+
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'None'] <- "1"
+recon_dem_1115$DMT_Group[recon_dem_1115$dmt_now == 'Other'] <- "1"
+recon_dem_1115$DMT_Group[is.na(recon_dem_1115$dmt_now)] <- "1"
+
+
+```
+
+
+```{r}
+
+MS_recon_demo <- recon_dem_1115 %>% filter(subject_group == "MS")
+
+nona_MS_recon_demo <- MS_recon_demo %>% filter(!is.na(duration_place_current))
+mean(nona_MS_recon_demo$duration_place_current)
+```
+```{r}
+
+#FINDING AGE AT THE LATEST PRO 
+
+msrsr_filter <- msrsr_joint %>% select(id_participant_l, year)
+promis_filter <- promis_joint %>% select(id_participant_l, year)
+pdds_filter <- pdds_joint %>% select(id_participant_l, year)
+
+Age <- rbind(msrsr_filter, promis_filter, pdds_filter)
+
+Age_adjust <- Age %>%
+    group_by(id_participant_l) %>%
+    filter(year == max(year)) %>% # filter the data.frame to keep row where x is maximum
+    select(year) # select column y
+
+Age_adjust_1 <- Age_adjust %>%
+  mutate_at(vars(-id_participant_l), as.numeric) %>%
+  group_by(id_participant_l, year) %>%
+  summarise(year_med = median(year), year_obs = n()) %>%
+  filter (year > 17) %>%
+  ungroup()
+
+Age_adjusted <- Age_adjust_1 %>% select(id_participant_l, year_med)
+
+recon_dem_1115_age <- merge(recon_dem_1115, Age_adjusted, by = "id_participant_l")
+recon_dem_1115_age_MS <- recon_dem_1115_age %>% filter(str_detect(subject_group, 'MS'))
+
+recon_dem_1115_age_MS$enrollment_date <- as.Date(recon_dem_1115_age_MS$enrollment_date, "%m/%d/%Y")
+recon_dem_1115_age_MS$enroll_year <- substring(recon_dem_1115_age_MS$enrollment_date, 3, 4)
+recon_dem_1115_age_MS$enroll_year <- as.numeric(recon_dem_1115_age_MS$enroll_year)
+recon_dem_1115_age_MS$year_med <- as.numeric(recon_dem_1115_age_MS$year_med)
+
+recon_dem_1115_age_MS$change_yr <- (recon_dem_1115_age_MS$year_med - recon_dem_1115_age_MS$enroll_year)
+recon_dem_1115_age_MS$age_latestPRO <- (recon_dem_1115_age_MS$change_yr + recon_dem_1115_age_MS$age_enroll)
+
+recon_dem_1115_age_MS$ID <- substring(recon_dem_1115_age_MS$id_participant_l, 1, 3)
+
+recon_dem_1115_age_MS$cohort <- if_else(recon_dem_1115_age_MS$ID == "PIT"|recon_dem_1115_age_MS$ID == "PRT", true = "Discovery", false = "Replication")
+
+
+#Finding duration of diagnosis using age at latest PRO
+recon_dem_1115_age_MS$dx_dur_adjust <- (recon_dem_1115_age_MS$age_latestPRO - recon_dem_1115_age_MS$msdx_age)
+
+recon_dem_1115_age_MS$dx_dur_adjust <- as.numeric(recon_dem_1115_age_MS$dx_dur_adjust)
+recon_dem_1115_age_MS$age_firstsx <- as.numeric(recon_dem_1115_age_MS$age_firstsx)
+recon_dem_1115_age_MS$age_latestPRO <- as.numeric(recon_dem_1115_age_MS$age_latestPRO)
+
+#recon_dem_1115_age_MS$symptom <- as.numeric(recon_dem_1115_age_MS$age_firstsx)
+#recon_dem_1115_age_MS$duration <- as.numeric(recon_dem_1115_age_MS$dx_dur_adjust)
+#recon_dem_1115_age_MS$current <- as.numeric(recon_dem_1115_age_MS$age_latestPRO)
+
+write.csv(recon_dem_1115_age_MS, "DEMOGRAPHICS_06_21.csv")
+
+typeof(recon_dem_1115_age_MS$dx_dur_adjust)
+
+
+
+#recon_dem_1115_age_MS$age_v_enroll_test <- (recon_dem_1115_age_MS$age_now - recon_dem_1115_age_MS$age_enroll)
+
+
+```
+
+
+```{r}
+
+###filters out only PRT (Pitt) participants, but longitudinal data with each participant having multiple scores
+recon_msrsr$msrsr_date <- as.Date(recon_msrsr$msrsr_date, "%m/%d/%Y")
+recon_msrsr$year <- substring(recon_msrsr$msrsr_date, 3,4)
+
+Pitt_msrsr <- recon_msrsr %>% filter(str_detect(id_participant_l, 'PRT|PIT')) 
+
+#found the scores for the latest recorded year
+Pitt_msrsr_latest <- Pitt_msrsr %>% 
+    group_by(id_participant_l) %>%
+    filter(year == max(year)) %>% # filter the data.frame to keep row where x is maximum
+    select(msrsr_total, year) # select column y
+
+#summary of scores for the latest recorded year
+library(dplyr)
+Pitt_msrsr_mean_latest <- Pitt_msrsr_latest %>%
+  mutate_at(vars(-id_participant_l), as.numeric) %>%
+  group_by(id_participant_l, year) %>%
+  summarise(msrsr_mean = mean(msrsr_total), msrsr_num_observations = n()) %>%
+  filter (year > 17) %>%
+  ungroup()
+Pitt_msrsr_mean_latest <- Pitt_msrsr_mean_latest %>% filter (year > 17)
+  
+Pitt_msrsr_median_latest <- Pitt_msrsr_latest %>%
+  mutate_at(vars(-id_participant_l), as.numeric) %>%
+  group_by(id_participant_l, year) %>%
+  summarise(msrsr_median = median(msrsr_total), msrsr_num_observations = n()) %>%
+  filter (year > 17) %>%
+  ungroup()
+
+Pitt_msrsr_median_latest_dem_1115 <- merge(Pitt_msrsr_median_latest, recon_dem_1115_age_MS, by = "id_participant_l")
+write.csv(Pitt_msrsr_median_latest_dem_1115, "Pitt_MSRSR_Median_Latest_SES15.csv")
+
+Pitt_msrsr_median_latest_dem_1418 <- merge(Pitt_msrsr_median_latest, recon_dem_1418, by = "id_participant_l")
+
+###Filter out Columbia COVID Cohort
+#Lot of overlaps with CU Covid Study. so we use the below to get rid of overlaps 
+###Filter out MS related cohorts, MSH, REF, TNF - GEMS cohort from CUIMC
+CU_msrsr <- recon_msrsr %>% filter(str_detect(id_participant_l, 'CU|MSH|REF|TNF|MSGEN')) 
+CU_msrsr$additional_study_identifier <- ifelse(is.na(CU_msrsr$additional_study_identifier), CU_msrsr$id_participant_l, CU_msrsr$additional_study_identifier)
+CU_msrsr$id_participant_l <- CU_msrsr$additional_study_identifier
+
+CU_msrsr_latest <- CU_msrsr %>% 
+    group_by(id_participant_l) %>%
+    filter(year == max(year)) %>% # filter the data.frame to keep row where x is maximum
+    select(msrsr_total, year) # select column y
+
+#summary of scores for the latest recorded year
+CU_msrsr_mean_latest <- CU_msrsr_latest %>%
+  mutate_at(vars(-id_participant_l), as.numeric) %>%
+  group_by(id_participant_l, year) %>%
+  summarise(msrsr_mean = mean(msrsr_total), msrsr_num_observations = n()) %>%
+  filter (year > 17) %>%
+  ungroup()
+
+CU_msrsr_median_latest <- CU_msrsr_latest %>%
+  mutate_at(vars(-id_participant_l), as.numeric) %>%
+  group_by(id_participant_l, year) %>%
+  summarise(msrsr_median = median(msrsr_total), msrsr_num_observations = n()) %>%
+  filter (year > 17) %>%
+  ungroup()
+
+CUIMC_msrsr_median_latest_dem_1115 <- merge(CU_msrsr_median_latest, recon_dem_1115_age_MS, by = "id_participant_l")
+write.csv(CUIMC_msrsr_median_latest_dem_1115, "CUIMC_MSRSR_Median_Latest_SES15.csv")
+
+CUIMC_msrsr_median_latest_dem_1418 <- merge(CU_msrsr_median_latest, recon_dem_1418, by = "id_participant_l")
+
+#finding median scores for both cohorts
+stat.desc(CUIMC_msrsr_median_latest_dem_1115$msrsr_median)
+describe(CUIMC_msrsr_median_latest_dem_1115$msrsr_median)
+stat.desc(Pitt_msrsr_median_latest_dem_1115$msrsr_median)
+describe(Pitt_msrsr_median_latest_dem_1115$msrsr_median)
+
+```
+
+```{r}
+#Filtering and Cleaning PROMIS T Scores
+
+recon_promis$promis_physical_date <- as.Date(recon_promis$promis_physical_date, "%m/%d/%Y")
+recon_promis$year <- substring(recon_promis$promis_physical_date, 3,4)
+
+Pitt_promis <- recon_promis %>% filter(str_detect(id_participant_l, 'PRT|PIT')) 
+
+#found the scores for the latest recorded year
+Pitt_promis_latest <- Pitt_promis %>% 
+    group_by(id_participant_l) %>%
+    filter(year == max(year)) %>% # filter the data.frame to keep row where x is maximum
+    select(promis_physical_tscore, year) # select column y
+
+#summary of scores for the latest recorded year
+library(dplyr)
+Pitt_promis_median_latest <- Pitt_promis_latest %>%
+  mutate_at(vars(-id_participant_l), as.numeric) %>%
+  group_by(id_participant_l, year) %>%
+  summarise(promis_median = median(promis_physical_tscore), promis_num_observations = n()) %>%
+  filter (year > 17) %>%
+  ungroup()
+
+Pitt_promis_median_latest_dem_1115 <- merge(Pitt_promis_median_latest, recon_dem_1115_age_MS, by = "id_participant_l")
+
+Pitt_promis_median_latest_dem_1418 <- merge(Pitt_promis_median_latest, recon_dem_1418, by = "id_participant_l")
+
+###Filter out Columbia COVID Cohort
+#Lot of overlaps with CU Covid Study. so we use the below to get rid of overlaps 
+###Filter out MS related cohorts, MSH, REF, TNF - GEMS cohort from CUIMC
+CU_promis <- recon_promis %>% filter(str_detect(id_participant_l, 'CU|MSH|REF|TNF|MSGEN')) 
+CU_promis$additional_study_identifier <- ifelse(is.na(CU_promis$additional_study_identifier), CU_promis$id_participant_l, CU_promis$additional_study_identifier)
+CU_promis$id_participant_l <- CU_promis$additional_study_identifier
+
+CU_promis_latest <- CU_promis %>% 
+    group_by(id_participant_l) %>%
+    filter(year == max(year)) %>% # filter the data.frame to keep row where x is maximum
+    select(promis_physical_tscore, year) # select column y
+
+#summary of scores for the latest recorded year
+CU_promis_median_latest <- CU_promis_latest %>%
+  mutate_at(vars(-id_participant_l), as.numeric) %>%
+  group_by(id_participant_l, year) %>%
+  summarise(promis_median = median(promis_physical_tscore), promis_num_observations = n()) %>%
+  filter (year > 17) %>%
+  ungroup()
+
+CUIMC_promis_median_latest_dem_1115 <- merge(CU_promis_median_latest, recon_dem_1115_age_MS, by = "id_participant_l")
+CUIMC_promis_median_latest_dem_1418 <- merge(CU_promis_median_latest, recon_dem_1418, by = "id_participant_l")
+
+#finding median scores for both cohorts
+stat.desc(Pitt_promis_median_latest_dem_1115$promis_median)
+describe(Pitt_promis_median_latest_dem_1115$promis_median)
+
+stat.desc(CUIMC_promis_median_latest_dem_1115$promis_median)
+describe(CUIMC_promis_median_latest_dem_1115$promis_median)
+
+
+```
+
+
+
+```{r}
+#Filtering and Cleaning PDDS Median Scores
+#Had to change date separately after filtering for Pitt vs CUIMC due to different date formats
+
+recon_pdds$combo_pdds_ds <- coalesce(recon_pdds$pdds, recon_pdds$ds) #combine ds and pdds scores, ds scores are mainly from columbia and pdds are from pitt
+
+Pitt_pdds <- recon_pdds %>% filter(str_detect(id_participant_l, 'PRT|PIT')) 
+Pitt_pdds$pdds_date <- as.Date(Pitt_pdds$pdds_date, "%m/%d/%Y")
+Pitt_pdds$year <- substring(Pitt_pdds$pdds_date, 3, 4)
+
+#found the scores for the latest recorded year
+Pitt_pdds_latest <- Pitt_pdds %>% 
+    group_by(id_participant_l) %>%
+    filter(year == max(year)) %>% # filter the data.frame to keep row where x is maximum
+    select(combo_pdds_ds, year) # select column y
+
+
+#summary of scores for the latest recorded year
+library(dplyr)
+Pitt_pdds_median_latest <- Pitt_pdds_latest %>%
+  mutate_at(vars(-id_participant_l), as.numeric) %>%
+  group_by(id_participant_l, year) %>%
+  summarise(pdds_median = median(combo_pdds_ds), pdds_num_observations = n()) %>%
+  filter (year > 17) %>%
+  ungroup()
+
+
+Pitt_pdds_median_latest$pdds_median <- as.numeric(Pitt_pdds_median_latest$pdds_median)
+
+Pitt_pdds_median_latest$dich[Pitt_pdds_median_latest$pdds_median >= 4] <- "Ambulation\nAssitance\nRequired"
+Pitt_pdds_median_latest$dich[Pitt_pdds_median_latest$pdds_median < 4] <- "No\n Ambulation\nAssistance"
+
+Pitt_pdds_median_latest_dem_1115 <- merge(Pitt_pdds_median_latest, recon_dem_1115_age_MS, by = "id_participant_l")
+write.csv(Pitt_pdds_median_latest_dem_1115, "Pitt_PDDS_Median_Latest_SES15.csv")
+
+Pitt_pdds_median_latest_dem_1418 <- merge(Pitt_pdds_median_latest, recon_dem_1418, by = "id_participant_l")
+
+###Filter out Columbia COVID Cohort
+###Filter out MS related cohorts, MSH, REF, TNF - GEMS cohort from CUIMC
+CU_pdds <- recon_pdds %>% filter(str_detect(id_participant_l, 'CU|MSH|REF|TNF|MSGEN')) 
+#Lot of overlaps with CU Covid Study. so we use the below to get rid of overlaps 
+CU_pdds$additional_study_identifier <- ifelse(is.na(CU_pdds$additional_study_identifier), CU_pdds$id_participant_l, CU_pdds$additional_study_identifier)
+CU_pdds$id_participant_l <- CU_pdds$additional_study_identifier
+#Harmonize the date format and extract the year 
+CU_pdds$pdds_date <- as.Date(CU_pdds$pdds_date, "%m/%d/%Y")
+CU_pdds$year <- substring(CU_pdds$pdds_date, 3, 4)
+
+CU_pdds_latest <- CU_pdds %>% 
+    group_by(id_participant_l) %>%
+    filter(year == max(year)) %>% # filter the data.frame to keep row where x is maximum
+    select(combo_pdds_ds, year) # select column y
+
+#summary of scores for the latest recorded year
+CU_pdds_median_latest <- CU_pdds_latest %>%
+  mutate_at(vars(-id_participant_l), as.numeric) %>%
+  group_by(id_participant_l, year) %>%
+  summarise(pdds_median = median(combo_pdds_ds), pdds_num_observations = n()) %>%
+  filter (year > 17) %>%
+  ungroup()
+
+CU_pdds_median_latest$dich[CU_pdds_median_latest$pdds_median >= 4] <- "Ambulation\nAssitance\nRequired"
+CU_pdds_median_latest$dich[CU_pdds_median_latest$pdds_median < 4] <- "No\n Ambulation\nAssistance"
+
+
+
+CUIMC_pdds_median_latest_dem_1115 <- merge(CU_pdds_median_latest, recon_dem_1115_age_MS, by = "id_participant_l")
+write.csv(CUIMC_pdds_median_latest_dem_1115, "CUIMC_PDDS_Median_Latest_SES15.csv")
+
+CUIMC_pdds_median_latest_dem_1418 <- merge(CU_pdds_median_latest, recon_dem_1418, by = "id_participant_l")
+
+
+#finding median scores for both cohorts
+stat.desc(Pitt_pdds_median_latest_dem_1115$pdds_median)
+describe(Pitt_pdds_median_latest_dem_1115$pdds_median)
+
+pdds_ambu_disc <- table1(~ factor(dich) + pdds_median, data=Pitt_pdds_median_latest_dem_1115, topclass = "Rtable1-times")
+pdds_ambu_disc
+
+stat.desc(CUIMC_pdds_median_latest_dem_1115$pdds_median)
+describe(CUIMC_pdds_median_latest_dem_1115$pdds_median)
+pdds_ambu_ext <- table1(~ factor(dich) + pdds_median, data=CUIMC_pdds_median_latest_dem_1115, topclass = "Rtable1-times")
+pdds_ambu_ext
+
+
+```
+
+
+```{r}
+library(dplyr)
+
+cuimc_missing <- CUIMC_recon_dem_1115_adj %>% 
+  filter(subject_group == 'MS')%>%
+  select(id_participant_l, dmt_now, dmt_now_duration, firstsx_age, msdx_age, dx_duration)
+
+cuimc_missing_stuff <- cuimc_missing[is.na(cuimc_missing$dmt_now) | is.na(cuimc_missing$dmt_now_duration) | is.na(cuimc_missing$firstsx_age) | is.na(cuimc_missing$msdx_age),]
+
+#write.csv(cuimc_missing_stuff, "CUIMC_Participants_Missing_Info_07242020.CSV")
+
+```
+
+
+
